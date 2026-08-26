@@ -46,39 +46,62 @@ data <- readxl::read_excel("samples_variant_results_longer.xlsx")
 head(data)
 
 # Clean data
-cdata <- data %>%
+complete_data <- data %>%
+  subset(VariantType == "SNP") %>%
   mutate(
-    # Convert percentage from character to numeric
-    Percentage = as.numeric(Percentage),
-    majority=Percentage >= 0.5,
-    
-    # Infer which is the consensus versus the minor_variant based on percentage
-    consensus=case_when(majority ~ ALT,
-                        TRUE ~ REF),
-    variant=case_when(majority ~ REF,
-                      TRUE ~ ALT),
-    minor_percentage = case_when(majority ~ 1.0 - Percentage,
-                                 TRUE ~ Percentage),
-    
-    # Report the minor variant mutation
-    mutation = paste0(consensus,"->", variant, sep="")
+    Percentage = as.numeric(Percentage)
+  ) %>% # Get all percentages of A,C,G,T at a position
+  pivot_wider(
+    names_from=ALT,
+    values_from = Percentage
+  ) %>%
+  rowwise() %>%
+  mutate( # Sum all percentages in case there are multiple variants at a position
+    total=sum(C, A, G, T, na.rm=TRUE)
+  )%>%
+  ungroup() %>%
+  mutate( # Compute the remaining reference percentage based on total
+    A=case_when(REF=="A" ~ 1 - total, TRUE ~ A),
+    C=case_when(REF=="C" ~ 1 - total, TRUE ~ C),
+    G=case_when(REF=="G" ~ 1 - total, TRUE ~ G),
+    T=case_when(REF=="T" ~ 1 - total, TRUE ~ T)
+  ) %>%
+  rowwise() %>%
+  mutate( # Specify the major_variant nucleotide
+    major_percentage=max(A,C,G,T, na.rm=TRUE),
+    consensus=case_when(A==major_percentage ~ "A",
+                        G==major_percentage ~ "G",
+                        C==major_percentage ~ "C",
+                        T==major_percentage ~ "T")
+  ) %>%
+  ungroup()
+
+# Expand back into longer format
+expand_data <- complete_data %>%
+  pivot_longer(
+    cols=c(A,C,G,T),
+    names_to = "variant",
+    values_to = "minor_percentage"
+  ) %>%
+  subset(!is.na(minor_percentage)) %>%
+  subset(consensus != variant) %>%
+  subset(minor_percentage !=0) %>%
+  mutate(
+    mutation = paste0(consensus,"->", variant, sep=""),
+    flipped = consensus == REF # diagnostic
   )
 
-# Plot variants (minor and major) along genome
-ggplot(cdata, aes(x=POS, y=Percentage, color=majority)) +
+# Plot minor variants along genome
+ggplot(expand_data, aes(x=POS, y=minor_percentage, color=flipped)) +
   geom_point() +
   facet_wrap(~CHROM, ncol=1)
 
-# Plot variants (minor) along the genome
-ggplot(cdata, aes(x=POS, y=minor_percentage, color=majority)) +
-  geom_point() +
-  facet_wrap(~CHROM, ncol=1)
+# TODO: Fix Codon changes, and IsSynonymous if it's affected by multiple minor variants
+# Will need to load codon table, update rest of plots
 @
 
 <<fig.width=6, fig.height=4>>=
-sdata <- cdata %>%
-  subset(VariantType!="Deletion") %>%
-  subset(VariantType!="Insertion") %>%
+sdata <- expand_data %>%
   group_by(CHROM, mutation, IsSynonymous) %>%
   summarize(
     n=n()
@@ -96,6 +119,34 @@ sdata %>%
       legend.position = "right"#, legend.title = ggplot2::element_blank()
       )
 @
+
+<<fig.width=6, fig.height=4>>=
+sdata <- expand_data %>%
+  mutate(
+    iSNVfreq = case_when(minor_percentage <=0.15 ~ "[0.0 - 0.15",
+                         minor_percentage <=0.27 ~ "(0.15 - 0.27]",
+                         minor_percentage <=0.39 ~ "(0.27 - 0.39]",
+                         TRUE ~ "(0.39 - 0.50]")
+  ) %>%
+  group_by(CHROM, iSNVfreq, IsSynonymous) %>%
+  summarize(
+    n=n()
+  )
+
+# Plot iSNV frequency
+sdata %>%
+  ggplot(aes(x = iSNVfreq, y = n, fill = IsSynonymous)) +
+  geom_bar(stat="identity", position="stack") +
+  facet_wrap(~CHROM) +
+  theme_bw()+
+  theme(
+      axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6),
+      axis.title.x = ggplot2::element_blank(), axis.title.y=ggplot2::element_blank(),
+      legend.position = "right"#, legend.title = ggplot2::element_blank()
+      )
+@
+
+
 
 
 \end{document}
