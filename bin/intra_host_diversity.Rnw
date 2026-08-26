@@ -1,0 +1,101 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.5in,top=1in,bottom=0.75in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage[table]{xcolor}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{tabu}
+\usepackage[normalem]{ulem}
+
+\usepackage{multicol}
+\usepackage{graphicx}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{Intrahost plots}
+\rhead{last update: \today}
+
+\begin{document}
+
+<<echo=FALSE>>=
+library(knitr)
+#opts_chunk$set(fig.width=6,fig.height=3.5,size="footnotesize",fig.align='center',cache=FALSE,echo=TRUE)
+opts_chunk$set(fig.width = 6, fig.height = 3.5, size = "footnotesize", fig.align = "center", cache = FALSE, echo = TRUE, warning=FALSE, message=FALSE)
+@
+
+\section*{Minor Variants H1N1}
+
+<<fig.width=6, fig.height=8>>=
+# Libraries
+library(tidyverse)
+library(magrittr)
+library(knitr)
+library(kableExtra)
+library(cowplot)
+
+# Load data
+data <- readxl::read_excel("samples_variant_results_longer.xlsx")
+
+head(data)
+
+# Clean data
+cdata <- data %>%
+  mutate(
+    # Convert percentage from character to numeric
+    Percentage = as.numeric(Percentage),
+    majority=Percentage >= 0.5,
+    
+    # Infer which is the consensus versus the minor_variant based on percentage
+    consensus=case_when(majority ~ ALT,
+                        TRUE ~ REF),
+    variant=case_when(majority ~ REF,
+                      TRUE ~ ALT),
+    minor_percentage = case_when(majority ~ 1.0 - Percentage,
+                                 TRUE ~ Percentage),
+    
+    # Report the minor variant mutation
+    mutation = paste0(consensus,"->", variant, sep="")
+  )
+
+# Plot variants (minor and major) along genome
+ggplot(cdata, aes(x=POS, y=Percentage, color=majority)) +
+  geom_point() +
+  facet_wrap(~CHROM, ncol=1)
+
+# Plot variants (minor) along the genome
+ggplot(cdata, aes(x=POS, y=minor_percentage, color=majority)) +
+  geom_point() +
+  facet_wrap(~CHROM, ncol=1)
+@
+
+<<fig.width=6, fig.height=4>>=
+sdata <- cdata %>%
+  subset(VariantType!="Deletion") %>%
+  subset(VariantType!="Insertion") %>%
+  group_by(CHROM, mutation, IsSynonymous) %>%
+  summarize(
+    n=n()
+  )
+
+# Plot mutational spectrum
+sdata %>%
+  ggplot(aes(x = mutation, y = n, fill = IsSynonymous)) +
+  geom_bar(stat="identity", position="stack") +
+  facet_wrap(~CHROM) +
+  theme_bw()+
+  theme(
+      axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6), 
+      axis.title.x = ggplot2::element_blank(), axis.title.y=ggplot2::element_blank(),
+      legend.position = "right"#, legend.title = ggplot2::element_blank()
+      )
+@
+
+
+\end{document}
