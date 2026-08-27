@@ -126,6 +126,7 @@ complete_data <- data %>%
                         C==major_percentage ~ "C",
                         T==major_percentage ~ "T"),
     SNPCodonPosition = as.numeric(SNPCodonPosition),
+    # TODO: Check the other codon positions in case they are in the variant list
     majorCodon = paste0(
       substr(RefCodon, 1, SNPCodonPosition),
       consensus,
