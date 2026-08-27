@@ -30,7 +30,7 @@ library(knitr)
 opts_chunk$set(fig.width = 6, fig.height = 3.5, size = "footnotesize", fig.align = "center", cache = FALSE, echo = TRUE, warning=FALSE, message=FALSE)
 @
 
-\section*{Minor Variants H1N1}
+\section*{Minor Variants positions}
 
 <<fig.width=8, fig.height=8>>=
 # Libraries
@@ -92,16 +92,16 @@ codon_to_aa <- c(
   "TAA" = "*", "TAG" = "*", "TGA" = "*"
 )
 
-order_chrom = c("PV062510_PB2", "PV074323_PB1", "PV062508_PA", "PV062513_HA",
-                "PV062507_MP", "PV062511_NA", "PV062509_NP", "PV062512_NS")
-
 # Clean data
 complete_data <- data %>%
-  select(-IsSynonymous, -AltAminoAcid, -AltCodon) %>% # Recompute these based on minor and major variant
+  select(-IsSynonymous, -AltAminoAcid, -AltCodon, -IsTransition, -AminoAcidChange) %>% # Recompute these based on minor and major variant
   subset(VariantType == "SNP") %>%
+  subset(Gene != "PB1-F2") %>%
   mutate(
     Percentage = as.numeric(Percentage),
-    CHROM=factor(CHROM, levels=order_chrom)
+    CHROM=factor(CHROM, 
+                 levels=c("PV062510_PB2", "PV074323_PB1", "PV062508_PA", "PV062513_HA",
+                          "PV062507_MP", "PV062511_NA", "PV062509_NP", "PV062512_NS"))
   ) %>% # Get all percentages of A,C,G,T at a position
   pivot_wider(
     names_from=ALT,
@@ -127,11 +127,13 @@ complete_data <- data %>%
                         T==major_percentage ~ "T"),
     SNPCodonPosition = as.numeric(SNPCodonPosition),
     # TODO: Check the other codon positions in case they are in the variant list
-    majorCodon = paste0(
-      substr(RefCodon, 1, SNPCodonPosition),
-      consensus,
-      substr(RefCodon, SNPCodonPosition + 2, 3)
-    ),
+    majorCodon =case_when(
+      IsGenic ~ paste0(
+        substr(RefCodon, 1, SNPCodonPosition),
+        consensus,
+        substr(RefCodon, SNPCodonPosition + 2, 3)
+      ),
+      TRUE ~ NA),
     majorAminoAcid = codon_to_aa[majorCodon]
   ) %>%
   ungroup()
@@ -148,10 +150,13 @@ expand_data <- complete_data %>%
   subset(minor_percentage !=0) %>%
   mutate(
     mutation = paste0(consensus,"->", variant, sep=""),
-    minorCodon = paste0(
-      substr(majorCodon, 1, SNPCodonPosition),
-      variant,
-      substr(majorCodon, SNPCodonPosition + 2, 3)
+    minorCodon = case_when(
+      IsGenic ~ paste0(
+        substr(majorCodon, 1, SNPCodonPosition),
+        variant,
+        substr(majorCodon, SNPCodonPosition + 2, 3)
+      ),
+      TRUE ~ NA
     ),
     minorAminoAcid = codon_to_aa[minorCodon],
     IsSynonymous = case_when(
@@ -160,36 +165,58 @@ expand_data <- complete_data %>%
       TRUE ~ "Non-Synonymous"
     ), 
     flipped = consensus == REF # diagnostic
-  )
+  ) %>%
+  arrange(Sample)
+
 
 # Plot minor variants along genome
 ggplot(expand_data, aes(x=POS, y=minor_percentage, color=IsSynonymous)) +
   geom_point() +
   facet_wrap(~CHROM, ncol=1) +
+  theme_bw() + 
   labs(
     x="Genomic position",
     y="iSNV frequency",
     color="Mutation type",
     title="Minor variants from all samples"
   )
+@ 
+
+<<echo=TRUE, eval=FALSE>>=
+for (SAMPLE in unique(expand_data$Sample)){
+  sample_data = expand_data %>%
+    subset(Sample == SAMPLE)
+  
+  p <- sample_data %>%
+    ggplot(aes(x=POS, y=minor_percentage, color=IsSynonymous)) +
+    geom_point() +
+    facet_wrap(~CHROM, ncol=1) +
+    theme_bw()
+    labs(
+      x="Genomic position",
+      y="iSNV frequency",
+      color="Mutation type",
+      title=paste0("Minor variants from ", SAMPLE)
+    )
+  ggsave(paste0("plots/", SAMPLE,"_genomeXvariant.png"), p,
+         width=6, height=max(length(unique(sample_data$CHROM)), 2))
+}
 @
 
 <<fig.width=6, fig.height=4>>=
 sdata <- expand_data %>%
   group_by(CHROM, mutation, IsSynonymous) %>%
-  summarize(
-    n=n()
-  )
+  summarize(n=n())
 
 # Plot mutational spectrum
 sdata %>%
   ggplot(aes(x = mutation, y = n, fill = IsSynonymous)) +
   geom_bar(stat="identity", position="stack") +
   facet_wrap(~CHROM, ncol=4) +
-  theme_bw()+
+  theme_bw() +
   theme(
       axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6),
-      legend.position = "right"#, legend.title = ggplot2::element_blank()
+      legend.position = "right"
       ) +
   labs(
     fill="Mutation type",
@@ -205,23 +232,23 @@ sdata <- expand_data %>%
     iSNVfreq = case_when(minor_percentage <=0.15 ~ "[0.0 - 0.15",
                          minor_percentage <=0.27 ~ "(0.15 - 0.27]",
                          minor_percentage <=0.39 ~ "(0.27 - 0.39]",
-                         TRUE ~ "(0.39 - 0.50]")
+                         TRUE ~ "(0.39 - 0.50]"),
+    iSNVfreq = factor(iSNVfreq, levels=c("[0.0 - 0.15", "(0.15 - 0.27]", "(0.27 - 0.39]", "(0.39 - 0.50]"))
+    
   ) %>%
   group_by(CHROM, iSNVfreq, IsSynonymous) %>%
-  summarize(
-    n=n()
-  )
+  summarize(n=n())
 
 # Plot iSNV frequency
 sdata %>%
   ggplot(aes(x = iSNVfreq, y = n, fill = IsSynonymous)) +
   geom_bar(stat="identity", position="stack") +
-  facet_wrap(~CHROM) +
+  facet_wrap(~CHROM, ncol=4) +
   theme_bw()+
   theme(
-      axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6),
+      axis.text.x = ggplot2::element_text(angle=90, vjust=0.5, hjust=1, size=6),
       axis.title.x = ggplot2::element_blank(), axis.title.y=ggplot2::element_blank(),
-      legend.position = "right"#, legend.title = ggplot2::element_blank()
+      legend.position = "right"
       )
 @
 
