@@ -32,7 +32,7 @@ opts_chunk$set(fig.width = 6, fig.height = 3.5, size = "footnotesize", fig.align
 
 \section*{Minor Variants H1N1}
 
-<<fig.width=6, fig.height=8>>=
+<<fig.width=8, fig.height=8>>=
 # Libraries
 library(tidyverse)
 library(magrittr)
@@ -42,14 +42,66 @@ library(cowplot)
 
 # Load data
 data <- readxl::read_excel("samples_variant_results_longer.xlsx")
-
 head(data)
+
+# Manually validated against https://www.genscript.com/tools/codon-table
+codon_to_aa <- c(
+  # Phenylalanine
+  "TTT" = "F", "TTC" = "F",
+  # Leucine
+  "TTA" = "L", "TTG" = "L", "CTT" = "L", "CTC" = "L", "CTA" = "L", "CTG" = "L",
+  # Isoleucine
+  "ATT" = "I", "ATC" = "I", "ATA" = "I",
+  # Methionine
+  "ATG" = "M",
+  # Valine
+  "GTT" = "V", "GTC" = "V", "GTA" = "V", "GTG" = "V",
+  # Serine
+  "TCT" = "S", "TCC" = "S", "TCA" = "S", "TCG" = "S",
+  "AGT" = "S", "AGC" = "S",
+  # Proline
+  "CCT" = "P", "CCC" = "P", "CCA" = "P", "CCG" = "P",
+  # Threonine
+  "ACT" = "T", "ACC" = "T", "ACA" = "T", "ACG" = "T",
+  # Alanine
+  "GCT" = "A", "GCC" = "A", "GCA" = "A", "GCG" = "A",
+  # Tyrosine
+  "TAT" = "Y", "TAC" = "Y",
+  # Histidine
+  "CAT" = "H", "CAC" = "H",
+  # Glutamine
+  "CAA" = "Q", "CAG" = "Q",
+  # Asparagine
+  "AAT" = "N", "AAC" = "N",
+  # Lysine
+  "AAA" = "K", "AAG" = "K",
+  # Aspartic acid
+  "GAT" = "D", "GAC" = "D",
+  # Glutamic acid
+  "GAA" = "E", "GAG" = "E",
+  # Cysteine
+  "TGT" = "C", "TGC" = "C",
+  # Tryptophan
+  "TGG" = "W",
+  # Arginine
+  "CGT" = "R", "CGC" = "R", "CGA" = "R", "CGG" = "R",
+  "AGA" = "R", "AGG" = "R",
+  # Glycine
+  "GGT" = "G", "GGC" = "G", "GGA" = "G", "GGG" = "G",
+  # Stop
+  "TAA" = "*", "TAG" = "*", "TGA" = "*"
+)
+
+order_chrom = c("PV062510_PB2", "PV074323_PB1", "PV062508_PA", "PV062513_HA",
+                "PV062507_MP", "PV062511_NA", "PV062509_NP", "PV062512_NS")
 
 # Clean data
 complete_data <- data %>%
+  select(-IsSynonymous, -AltAminoAcid, -AltCodon) %>% # Recompute these based on minor and major variant
   subset(VariantType == "SNP") %>%
   mutate(
-    Percentage = as.numeric(Percentage)
+    Percentage = as.numeric(Percentage),
+    CHROM=factor(CHROM, levels=order_chrom)
   ) %>% # Get all percentages of A,C,G,T at a position
   pivot_wider(
     names_from=ALT,
@@ -72,7 +124,14 @@ complete_data <- data %>%
     consensus=case_when(A==major_percentage ~ "A",
                         G==major_percentage ~ "G",
                         C==major_percentage ~ "C",
-                        T==major_percentage ~ "T")
+                        T==major_percentage ~ "T"),
+    SNPCodonPosition = as.numeric(SNPCodonPosition),
+    majorCodon = paste0(
+      substr(RefCodon, 1, SNPCodonPosition),
+      consensus,
+      substr(RefCodon, SNPCodonPosition + 2, 3)
+    ),
+    majorAminoAcid = codon_to_aa[majorCodon]
   ) %>%
   ungroup()
 
@@ -88,16 +147,30 @@ expand_data <- complete_data %>%
   subset(minor_percentage !=0) %>%
   mutate(
     mutation = paste0(consensus,"->", variant, sep=""),
+    minorCodon = paste0(
+      substr(majorCodon, 1, SNPCodonPosition),
+      variant,
+      substr(majorCodon, SNPCodonPosition + 2, 3)
+    ),
+    minorAminoAcid = codon_to_aa[minorCodon],
+    IsSynonymous = case_when(
+      is.na(majorAminoAcid) ~ "Intergenic",
+      majorAminoAcid == minorAminoAcid ~ "Synonymous",
+      TRUE ~ "Non-Synonymous"
+    ), 
     flipped = consensus == REF # diagnostic
   )
 
 # Plot minor variants along genome
-ggplot(expand_data, aes(x=POS, y=minor_percentage, color=flipped)) +
+ggplot(expand_data, aes(x=POS, y=minor_percentage, color=IsSynonymous)) +
   geom_point() +
-  facet_wrap(~CHROM, ncol=1)
-
-# TODO: Fix Codon changes, and IsSynonymous if it's affected by multiple minor variants
-# Will need to load codon table, update rest of plots
+  facet_wrap(~CHROM, ncol=1) +
+  labs(
+    x="Genomic position",
+    y="iSNV frequency",
+    color="Mutation type",
+    title="Minor variants from all samples"
+  )
 @
 
 <<fig.width=6, fig.height=4>>=
@@ -111,13 +184,18 @@ sdata <- expand_data %>%
 sdata %>%
   ggplot(aes(x = mutation, y = n, fill = IsSynonymous)) +
   geom_bar(stat="identity", position="stack") +
-  facet_wrap(~CHROM) +
+  facet_wrap(~CHROM, ncol=4) +
   theme_bw()+
   theme(
-      axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6), 
-      axis.title.x = ggplot2::element_blank(), axis.title.y=ggplot2::element_blank(),
+      axis.text.x = ggplot2::element_text(angle=90, vjust=1, hjust=1, size=6),
       legend.position = "right"#, legend.title = ggplot2::element_blank()
-      )
+      ) +
+  labs(
+    fill="Mutation type",
+    x="mutation",
+    y="Number of iSNVs",
+    title="Mutational spectrum in H1N1 samples"
+  )
 @
 
 <<fig.width=6, fig.height=4>>=
@@ -145,8 +223,5 @@ sdata %>%
       legend.position = "right"#, legend.title = ggplot2::element_blank()
       )
 @
-
-
-
 
 \end{document}
