@@ -3,6 +3,7 @@ library(tidyverse)
 library(plotly)
 library(DT)
 library(readxl)
+library(Biostrings)
 
 # ============================================================
 # DATA PROCESSING
@@ -11,8 +12,6 @@ library(readxl)
 data <- read_excel(
   "/Users/jchang99/github/j23414/vcf-plots/bin/data/samples_variant_results_longer.xlsx"
 )
-
-# codon_to_aa <- ...
 
 complete_data <- data %>%
   select(
@@ -91,7 +90,7 @@ complete_data <- data %>%
       TRUE ~ NA
     ),
     
-    majorAminoAcid = codon_to_aa[majorCodon]
+    majorAminoAcid = GENETIC_CODE[majorCodon]
   ) %>%
   ungroup()
 
@@ -119,7 +118,7 @@ expand_data <- complete_data %>%
       TRUE ~ NA
     ),
     
-    minorAminoAcid = codon_to_aa[minorCodon],
+    minorAminoAcid = GENETIC_CODE[minorCodon],
     
     IsSynonymous = case_when(
       is.na(majorAminoAcid) ~ "Intergenic",
