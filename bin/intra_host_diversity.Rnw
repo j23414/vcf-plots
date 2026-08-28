@@ -146,7 +146,7 @@ expand_data <- complete_data %>%
     values_to = "minor_percentage"
   ) %>%
   subset(!is.na(minor_percentage)) %>%
-  subset(consensus != variant) %>%
+  #subset(consensus != variant) %>%
   subset(minor_percentage !=0) %>%
   mutate(
     mutation = paste0(consensus,"->", variant, sep=""),
