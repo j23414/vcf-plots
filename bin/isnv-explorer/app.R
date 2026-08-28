@@ -103,8 +103,9 @@ expand_data <- complete_data %>%
   ) %>%
   filter(
     !is.na(minor_percentage),
-    consensus != variant,
-    minor_percentage != 0
+    # consensus != variant,
+    minor_percentage != 0,
+    minor_percentage < 1
   ) %>%
   mutate(
     mutation = paste0(consensus, "->", variant),

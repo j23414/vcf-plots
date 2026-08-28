@@ -101,6 +101,7 @@ expand_data <- complete_data %>%
   subset(!is.na(minor_percentage)) %>%
   #subset(consensus != variant) %>%
   subset(minor_percentage !=0) %>%
+  subset(minor_percentage < 1) %>%
   mutate(
     mutation = paste0(consensus,"->", variant, sep=""),
     minorCodon = case_when(
@@ -131,7 +132,7 @@ ggplot(expand_data, aes(x=POS, y=minor_percentage, color=IsSynonymous)) +
     x="Genomic position",
     y="iSNV frequency",
     color="Mutation type",
-    title="Minor variants from all samples"
+    title="Variants from all samples"
   )
 @ 
 
