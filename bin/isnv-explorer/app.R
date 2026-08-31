@@ -10,7 +10,7 @@ library(Biostrings)
 # ============================================================
 
 data <- read_excel(
-  "/Users/jchang99/github/j23414/vcf-plots/bin/data/samples_variant_results_longer.xlsx"
+  "/Users/jchang99/github/j23414/vcf-plots/data/samples_variant_results_longer.xlsx"
 )
 
 complete_data <- data %>%
@@ -30,14 +30,14 @@ complete_data <- data %>%
     CHROM = factor(
       CHROM,
       levels = c(
-        "PV062510_PB2",
-        "PV074323_PB1",
-        "PV062508_PA",
-        "PV062513_HA",
-        "PV062507_MP",
-        "PV062511_NA",
-        "PV062509_NP",
-        "PV062512_NS"
+        "PV062510|PB2",
+        "PV074323|PB1",
+        "PV062508|PA",
+        "PV062513|HA",
+        "PV062507|MP",
+        "PV062511|NA",
+        "PV062509|NP",
+        "PV062512|NS"
       )
     )
   ) %>%
