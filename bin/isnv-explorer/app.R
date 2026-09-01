@@ -145,13 +145,16 @@ ui <- fluidPage(
         "sample",
         "Sample",
         choices = c("All",sort(unique(expand_data$Sample))),
-        selected="All"
+        selected="All",
+        multiple = TRUE
       ),
       
       selectInput(
         "segment",
         "Segment",
-        choices = c("All", levels(expand_data$CHROM))
+        choices = c("All", levels(expand_data$CHROM)),
+        selected="All",
+        multiple = TRUE
       ),
       
       checkboxGroupInput(
@@ -215,19 +218,31 @@ server <- function(input, output, session) {
   # ----------------------------------------------------------
   
   sample_data <- reactive({
-    
+
+    selected <- input$sample
+    if (length(selected) > 1 && "All" %in% selected) {
+      selected <- selected[selected != "All"]
+      updateSelectInput(session, "sample", selected = selected)
+    }
+
+    selected <- input$segment
+    if (length(selected) > 1 && "All" %in% selected) {
+      selected <- selected[selected != "All"]
+      updateSelectInput(session, "segment", selected = selected)
+    }
+
     x <- expand_data %>%
       filter(
         IsSynonymous %in% input$mutation_type,
         minor_percentage >= input$min_freq
       )
     
-    if (input$sample != "All") {
+    if ( ! "All" %in% c(input$sample)){
       x <- x %>%
-        filter(Sample == input$sample)
+        filter(Sample %in% c(input$sample))
     }
     
-    if (input$segment != "All") {
+    if (! "All" %in% c(input$segment)) {
       x <- x %>%
         filter(CHROM == input$segment)
     }
@@ -304,7 +319,8 @@ server <- function(input, output, session) {
       geom_col() +
       facet_wrap(
         ~CHROM,
-        ncol = 4
+        ncol = 4,
+        scales = "free_y"
       ) +
       theme_bw() +
       theme(
