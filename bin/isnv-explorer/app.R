@@ -16,7 +16,14 @@ expand_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/expand_d
 depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth.tsv", delim = "\t", na = character()) %>%
   mutate(CHROM = factor(CHROM,
                         levels = c("PV062510|PB2", "PV074323|PB1", "PV062508|PA","PV062513|HA",
-                                   "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS")))
+                                   "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS")),
+         Depth = case_when(Depth<1 ~ 1, TRUE ~ Depth))
+
+filtered_depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth2.tsv", delim = "\t", na = character()) %>%
+  mutate(CHROM = factor(CHROM,
+                        levels = c("PV062510|PB2", "PV074323|PB1", "PV062508|PA","PV062513|HA",
+                                   "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS")),
+         Depth = case_when(Depth<1 ~ 1, TRUE ~ Depth))
 
 # ============================================================
 # UI
@@ -176,15 +183,21 @@ server <- function(input, output, session) {
     sample_depth <- depth_data %>%
       filter(Sample == sample_name)
 
+    filtered_sample_depth <- filtered_depth_data %>%
+      filter(Sample == sample_name)
+
     # Use only variants from this sample
     sample_variants <- variants %>%
       filter(Sample == sample_name)
 
     p <- ggplot() +
       # Depth
+      geom_line(data = filtered_sample_depth,
+                aes(x = POS, y = Depth),
+                color = "#D5DDE0") +
       geom_line(data = sample_depth,
                 aes(x = POS, y = Depth),
-                color = "blue") +
+                color = "#71838C") +
       # iSNVs
       geom_point(
         data = sample_variants,
