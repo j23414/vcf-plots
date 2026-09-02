@@ -2,9 +2,7 @@ library(shiny)
 library(tidyverse)
 library(plotly)
 library(DT)
-library(readxl)
 library(Biostrings)
-
 # ============================================================
 # DATA PROCESSING
 # ============================================================
@@ -65,7 +63,7 @@ ui <- fluidPage(
       h3("iSNVs across genome"),
       plotlyOutput("genome_plot", height = "800px"),
       h3("Mutational spectrum"),
-      plotlyOutput("spectrum_plot"),
+      plotlyOutput("spectrum_plot", height = "410px"),
       h3("Variants"),
       DTOutput("variant_table")
     )
@@ -165,7 +163,7 @@ server <- function(input, output, session) {
         theme_bw() +
         labs(x = "Genomic position", y = "iSNV frequency", color = "Mutation type")
 
-      return(ggplotly(p, tooltip = "text"))
+      return(ggplotly(p, tooltip = "text", width=800, height=800))
     }
 
 
@@ -224,7 +222,7 @@ server <- function(input, output, session) {
       ) +
       theme_bw()
 
-    ggplotly(p, tooltip = "text")
+    ggplotly(p, tooltip = "text", width=800, height=600)
   })
 
   # ----------------------------------------------------------
@@ -237,7 +235,9 @@ server <- function(input, output, session) {
 
     p <- ggplot(sdata, aes(x = mutation, y = n, fill = IsSynonymous)) +
       geom_col() +
-      facet_wrap(~ CHROM, ncol = 4, scales = "free_y") +
+      facet_wrap(~ CHROM, ncol = 4,
+                 scales = "free_y"
+                 ) +
       theme_bw() +
       theme(axis.text.x = element_text(
         angle = 90,
@@ -245,9 +245,12 @@ server <- function(input, output, session) {
         hjust = 1,
         size = 7
       )) +
-      labs(x = "Mutation", y = "Number of iSNVs", fill = "Mutation type")
+      labs(
+        x = "Mutation",
+        y = "Number of iSNVs",
+        fill = "Mutation type")
 
-    ggplotly(p)
+    ggplotly(p, width=800, height=400)
   })
 
 
