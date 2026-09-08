@@ -10,13 +10,13 @@ library(Biostrings)
 expand_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/expand_data.tsv", delim="\t", na=character()) %>%
   mutate(
     CHROM=factor(CHROM, levels=c("PV062510|PB2", "PV074323|PB1", "PV062508|PA", "PV062513|HA",
-                                 "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS"))
+                                 "PV062509|NP", "PV062511|NA", "PV062507|MP", "PV062512|NS"))
   )
 
 depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth.tsv", delim = "\t", na = character()) %>%
   mutate(CHROM = factor(CHROM,
                         levels = c("PV062510|PB2", "PV074323|PB1", "PV062508|PA","PV062513|HA",
-                                   "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS")),
+                                   "PV062509|NP", "PV062511|NA", "PV062507|MP", "PV062512|NS")),
          Depth = case_when(Depth<1 ~ 1, TRUE ~ Depth))
 
 filtered_depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth2.tsv", delim = "\t", na = character()) %>%
