@@ -56,14 +56,14 @@ ui <- fluidPage(
         selected = c("Synonymous", "Non-Synonymous", "Intergenic")
       ),
 
-      # sliderInput(
-      #   "min_freq",
-      #   "Minimum iSNV frequency",
-      #   min = 0,
-      #   max = 0.5,
-      #   value = 0,
-      #   step = 0.01
-      # )
+      sliderInput(
+        "min_freq",
+        "Minimum iSNV frequency",
+        min = 0,
+        max = 1.0,
+        value = 0,
+        step = 0.01
+      )
     ),
 
     mainPanel(
@@ -106,7 +106,7 @@ server <- function(input, output, session) {
 
     x <- expand_data %>%
       filter(IsSynonymous %in% input$mutation_type,
-             # minor_percentage >= input$min_freq
+             minor_percentage >= input$min_freq
              )
 
     if (!"All" %in% c(input$sample)) {
