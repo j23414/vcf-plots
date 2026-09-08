@@ -21,7 +21,7 @@ data <- read_excel(INFILE)
 complete_data <- data %>%
   select(-IsSynonymous, -AltAminoAcid, -AltCodon, -IsTransition, -AminoAcidChange) %>% # Recompute these based on minor and major variant
   subset(VariantType == "SNP") %>%
-  subset(Gene != "PB1-F2") %>%
+  subset(Gene != "PB1-F2" & Gene != "PA-X") %>%
   mutate(
     Percentage = as.numeric(Percentage),
     CHROM=factor(CHROM, levels=CHROM_ORDER)
