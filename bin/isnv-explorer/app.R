@@ -161,6 +161,7 @@ server <- function(input, output, session) {
             "<br>Frequency: ",
             scales::percent(minor_percentage),
             "<br>Gene: ", Gene,
+            "<br>Codon Position: ", CodonPosition,
             "<br>Codon: ", minorCodon,
             "<br>Amino acid: ", minorAminoAcid
           )
