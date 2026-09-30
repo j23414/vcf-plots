@@ -7,7 +7,7 @@ library(Biostrings)
 # DATA PROCESSING
 # ============================================================
 
-expand_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/expand_data.tsv", delim="\t", na=character()) %>%
+expand_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/expand_data_100000_0100.tsv", delim="\t", na=character()) %>%
   mutate(
     CHROM=factor(CHROM, levels=c("PV062510|PB2", "PV074323|PB1", "PV062508|PA", "PV062513|HA",
                                  "PV062509|NP", "PV062511|NA", "PV062507|MP", "PV062512|NS"))
@@ -24,6 +24,76 @@ filtered_depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/
                         levels = c("PV062510|PB2", "PV074323|PB1", "PV062508|PA","PV062513|HA",
                                    "PV062507|MP", "PV062511|NA", "PV062509|NP", "PV062512|NS")),
          Depth = case_when(Depth<1 ~ 1, TRUE ~ Depth))
+
+mindepth=1000
+
+# ============================================================
+# Generate static visuals
+# ============================================================
+#
+# samples = unique(expand_data$Sample)
+#
+# for (sample in samples ){
+#   print(sample)
+#   sample_variants <- expand_data %>%
+#     filter(Sample %in% sample)
+#
+#   sample_depth <- depth_data %>%
+#     filter(Sample == sample)
+#
+#   filtered_sample_depth <- filtered_depth_data %>%
+#     filter(Sample == sample)
+#
+#   # print(nrow(variants))
+#
+#   p <- ggplot() +
+#     # Depth
+#     geom_line(data = filtered_sample_depth,
+#               aes(x = POS, y = Depth),
+#               color = "#D5DDE0") +
+#     geom_line(data = sample_depth,
+#               aes(x = POS, y = Depth),
+#               color = "#71838C") +
+#     # iSNVs
+#     geom_point(
+#       data = sample_variants,
+#       aes(
+#         x = POS,
+#         # Put iSNVs in the lower portion of the depth plot
+#         y = (
+#           max(log10(sample_depth$Depth), na.rm = TRUE) / 4 +
+#             minor_percentage *
+#             max(log10(sample_depth$Depth), na.rm = TRUE) / 2
+#         )^8,
+#         color = IsSynonymous,
+#         text = paste0(
+#           "Position: ", POS,
+#           "<br>Mutation: ", mutation,
+#           "<br>Frequency: ",
+#           scales::percent(minor_percentage),
+#           "<br>Gene: ", Gene,
+#           "<br>Codon: ", minorCodon,
+#           "<br>Amino acid: ", minorAminoAcid
+#         )
+#       ),
+#       size = 2
+#     ) +
+#     facet_wrap(~ CHROM, scales = "free_x", ncol = 2) +
+#     geom_hline(yintercept = 100,
+#                linetype = "dashed",
+#                color = "red") +
+#     scale_y_log10() +
+#     labs(
+#       title = paste("Depth Plot for Sample:", sample),
+#       x = "Position",
+#       y = "Depth",
+#       color = "Mutation type"
+#     ) +
+#     theme_bw()
+#
+#   ggsave(filename=paste0("/Users/jchang99/Desktop/iSNV/Results_100000maxreads_0100mindepth/samples/",sample,".png", sep=""), plot=p, height=8, width=8)
+# }
+
 
 # ============================================================
 # UI
@@ -224,7 +294,7 @@ server <- function(input, output, session) {
         size = 2
       ) +
       facet_wrap(~ CHROM, scales = "free_x", ncol = 2) +
-      geom_hline(yintercept = 1000,
+      geom_hline(yintercept = mindepth,
                  linetype = "dashed",
                  color = "red") +
       scale_y_log10() +
@@ -245,6 +315,7 @@ server <- function(input, output, session) {
 
   output$spectrum_plot <- renderPlotly({
     sdata <- sample_data() %>%
+      subset(consensus != variant) %>%
       count(CHROM, mutation, IsSynonymous)
 
     p <- ggplot(sdata, aes(x = mutation, y = n, fill = IsSynonymous)) +
