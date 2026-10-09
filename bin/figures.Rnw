@@ -1,0 +1,527 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.5in,top=1in,bottom=0.75in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage[table]{xcolor}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{pdflscape}
+\usepackage{tabu}
+\usepackage[normalem]{ulem}
+
+\usepackage{multicol}
+\usepackage{graphicx}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\lhead{Figures}
+\rhead{last update: \today}
+
+\begin{document}
+
+<<echo=FALSE>>=
+library(knitr)
+opts_chunk$set(fig.width = 6, fig.height = 3.5, size = "footnotesize", fig.align = "center", cache = FALSE, echo = FALSE, warning=FALSE, message=FALSE)
+@
+
+<<fig.width=8, fig.height=4, echo=FALSE>>=
+# Libraries
+library(tidyverse)
+library(DT)
+library(Biostrings)
+library(ggh4x)
+library(pheatmap)
+library(ggrepel)
+
+# ============================================================
+# DATA PROCESSING
+# ============================================================
+
+age_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/bin/S6_Age_and_DPI_metadata.csv", delim=",")
+names(age_data) <- c("SJ", "months", "onset", "years")
+age_data$SJ <- as.character(age_data$SJ)
+
+chromosome_order = c("PV062510|PB2", "PV074323|PB1", "PV062508|PA", "PV062513|HA",
+                       "PV062509|NP", "PV062511|NA", "PV062507|MP", "PV062512|NS")
+
+INFILE="/Users/jchang99/github/j23414/vcf-plots/data/expand_data_100000_0100.tsv"
+expand_data <- read_delim(INFILE, delim="\t", na=character()) %>%
+  mutate(
+    CHROM=factor(CHROM, levels=chromosome_order),
+    SJ=str_split_i(Sample,"_", 2)
+  ) %>%
+  left_join(
+    .,
+    age_data,
+    by="SJ"
+  )
+
+depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth.tsv", delim = "\t", na = character()) %>%
+  mutate(
+    CHROM = factor(CHROM, levels = chromosome_order),
+    Depth = case_when(Depth < 1 ~ 1, TRUE ~ Depth)
+  )
+
+filtered_depth_data <- read_delim("/Users/jchang99/github/j23414/vcf-plots/data/combined_depth2.tsv", delim = "\t", na = character()) %>%
+  mutate(
+    CHROM = factor(CHROM, levels = chromosome_order),
+    Depth = case_when(Depth < 1 ~ 1, TRUE ~ Depth)
+)
+
+mindepth=100
+@
+
+\section*{Do we have sufficent depth and coverage to call variants?}
+
+<<fig.width=8, fig.height=4>>=
+depth_window <- 100
+sample_num <- length(unique(filtered_depth_data$Sample))
+
+filtered_depth_data %>%
+  # Group by depth window
+  unique(.) %>%
+  mutate(
+    group = floor(POS/depth_window)*depth_window
+  ) %>%
+  group_by(Sample, CHROM, group) %>%
+  summarize(
+    average_depth = mean(Depth, na.rm = TRUE)
+  ) %>%
+  ungroup(.) %>%
+  # Plot
+  ggplot(., aes(x=factor(group), y=average_depth)) +
+  geom_boxplot() +
+  scale_y_log10() +
+  geom_hline(yintercept = 1000,
+             linetype = "dashed",
+             color = "red") +
+  geom_hline(yintercept = 100,
+             linetype = "dashed",
+             color = "blue") +
+  facet_wrap(~CHROM, scale="free_x", nrow=2, dir="v") +
+  force_panelsizes(cols = c(5, 4, 3, 2)) +
+  labs(y=paste0("Mean depth per ",depth_window,"bp window"), x="Genomic position",
+       title=paste0("Read depth across genome (",sample_num," samples)")
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5,hjust = 1)
+  )
+
+ggsave(
+  filename = "figs/all_samples_depth.png",
+  create.dir = TRUE
+)
+@
+
+\noindent
+The red line shows a cutoff DP of 1000 while the blue line shows a cutoff DP of 100. \newline This report is generated from datafile: \Sexpr{gsub("_", "\\\\_", INFILE)}
+
+\section*{Intrahost diversity}
+
+<<fig.width=8>>=
+# Keep variants within the frequency range of interest
+minimum_frequency = 0.005
+
+# Only minor variants
+minor_variants_data <- expand_data %>%
+  filter(
+    minor_percentage < 0.5
+  )
+
+# Count and normalize iSNV per sample and segment
+isnv_normalized <- minor_variants_data %>%
+  # Count iSNVs
+  filter(
+    minor_percentage > minimum_frequency,
+  ) %>%
+  distinct(Sample, CHROM, mutation) %>%
+  count(Sample, CHROM, name = "n_isnv") %>%
+  # Normalize iSNV counts
+  complete(
+    Sample,
+    CHROM,
+    fill = list(n_isnv = 0)
+  ) %>%
+  mutate(
+    isnv_per_kb = case_when(
+        grepl("PB2", CHROM) ~ n_isnv/2.3,
+        grepl("PB1", CHROM) ~ n_isnv/2.3,
+        grepl("PA", CHROM) ~ n_isnv/2.1,
+        grepl("HA", CHROM) ~ n_isnv/1.7,
+        grepl("NP", CHROM) ~ n_isnv/1.4,
+        grepl("NA", CHROM) ~ n_isnv/1.4,
+        grepl("MP", CHROM) ~ n_isnv/0.9,
+        grepl("NS", CHROM) ~ n_isnv/0.7)
+  )
+
+heatmap_data <- isnv_normalized %>%
+  select(CHROM, Sample, isnv_per_kb) %>%
+  pivot_wider(
+    names_from = Sample,
+    values_from = isnv_per_kb,
+    values_fill = 0
+  )
+
+heatmap_matrix <- heatmap_data %>%
+  column_to_rownames("CHROM") %>%
+  as.matrix()
+
+heatmap_colors <- colorRampPalette(c("#FFFF99", "#FDBB45", "#C45A91", "#5E3C80", "#333333"))(100)
+
+unique_age <- expand_data %>%
+  select(Sample, years, onset) %>%
+  unique(.)
+
+sample_annotation <- data.frame(
+  Age = unique_age$years,
+  Onset = unique_age$onset
+)
+
+rownames(sample_annotation) <- unique_age$Sample
+sample_annotation <- sample_annotation[colnames(heatmap_matrix), , drop = FALSE]
+annotation_colors <- list(
+  Age = colorRampPalette(c("lightblue", "yellow", "red"))(100),
+  Onset = colorRampPalette(c("lightgreen", "yellow", "orange"))(100)
+)
+
+pheatmap(
+  heatmap_matrix,
+  color = heatmap_colors,
+  cluster_rows = FALSE,
+  cluster_cols = TRUE,
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  border_color = "grey90",
+  angle_col = 90,
+  main = "iSNV counts per kb by sample and segment",
+  legend_breaks = c(0, 1, 2, 3.0),
+  fontsize_row = 10,
+  fontsize_col = 8,
+  annotation_col = sample_annotation,
+  annotation_colors = annotation_colors
+)
+
+ggsave(
+  filename = "figs/heatmap.png",
+  create.dir = TRUE
+)
+@
+
+\noindent
+Filtered to minor variants above \Sexpr{minimum_frequency}, and samples grouped by total count of iSNV (not shared iSNVs) and normalized by segment length.
+Segments PB2 and PA seem to have the most iSNV called per 1000 bp region
+
+\newpage
+\section*{Frequency of iSNVs across segments}
+
+<<fig.width=8, fig.height=9.5>>=
+minor_variants_data %>%
+  ggplot(., aes(x=POS, y=minor_percentage, color=IsSynonymous)) +
+  geom_point() +
+  facet_wrap(~CHROM, ncol=1, scale="free_x") +
+  theme_bw() +
+  labs(
+    x="Genomic position",
+    y="iSNV frequency",
+    color="Mutation type",
+    title="Variants from all samples"
+  )
+
+ggsave(
+  filename = "figs/isnv_across_segments.png",
+  create.dir = TRUE
+)
+@
+
+\section*{Intrahost diversity and mutational spectrum}
+
+<<fig.width=4, fig.height=4>>=
+minor_variants_data %>%
+  # Count iSNV by Chromosome
+  filter(
+    minor_percentage > minimum_frequency
+  ) %>%
+  select(Sample, CHROM, POS) %>%
+  unique(.) %>%
+  group_by(Sample, CHROM) %>%
+  summarize(
+    n=n()
+  )%>%
+  ungroup(.) %>%
+  mutate(
+    n = case_when(grepl("PB2", CHROM) ~ n/2.3,
+                  grepl("PB1", CHROM) ~ n/2.3,
+                  grepl("PA", CHROM) ~ n/2.1,
+                  grepl("HA", CHROM) ~ n/1.7,
+                  grepl("NP", CHROM) ~ n/1.4,
+                  grepl("NA", CHROM) ~ n/1.4,
+                  grepl("MP", CHROM) ~ n/0.9,
+                  grepl("NS", CHROM) ~ n/0.7)
+  ) %>%
+  # Boxplot by segment
+  ggplot(., aes(x=factor(CHROM), y=n)) +
+  geom_boxplot() +
+  force_panelsizes(cols = c(5, 4, 3, 2)) +
+  labs(y="Number of iSNVs / kb / sample", x="Segment") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5,hjust = 1)
+  )
+
+ggsave(
+  filename = "figs/boxplot_segments.png",
+  create.dir = TRUE
+)
+@
+
+Filtered to minor variants above \Sexpr{minimum_frequency}, and total count of iSNV normalized by segment length.
+
+\newpage
+\section*{iSNV frequencies}
+
+<<fig.width=6, fig.height=4>>=
+minor_variants_data_freq <- minor_variants_data %>%
+  mutate(
+    isnv_freq = case_when(
+      minor_percentage > 0.40 ~ "(0.40, 0.50]",
+      minor_percentage > 0.30 ~ "(0.30, 0.40]",
+      minor_percentage > 0.20 ~ "(0.20, 0.30]",
+      minor_percentage > 0.10 ~ "(0.10, 0.20]",
+      minor_percentage > 0.01 ~ "(0.01, 0.10]",
+      minor_percentage > 0.005 ~ "(0.005, 0.01]",
+      TRUE ~ "(0.00, 0.005]"
+    )
+  )
+
+isnv_freq_data <- minor_variants_data_freq %>%
+  group_by(CHROM, IsSynonymous, isnv_freq) %>%
+  summarize(
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  complete(
+    CHROM,
+    IsSynonymous,
+    isnv_freq,
+    fill = list(n = 0)
+  )
+
+isnv_freq_data %>%
+  ggplot(., aes(x=isnv_freq, y=n, fill=IsSynonymous)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  facet_wrap(~ CHROM, scale="free_y") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)
+  ) +
+  labs(x="iSNV frequency", y="Frequency", title="All frequencies")
+
+ggsave(
+  filename = "figs/isnv_freq_all.png",
+  create.dir = TRUE
+)
+
+isnv_freq_data %>%
+  filter(isnv_freq != "(0.00, 0.005]") %>%
+  ggplot(., aes(x=isnv_freq, y=n, fill=IsSynonymous)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  facet_wrap(~ CHROM, scale="free_y") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)
+  ) +
+  labs(x="iSNV frequency", y="Frequency", title=paste0("Drop anything below ", minimum_frequency))
+
+ggsave(
+  filename = "figs/isnv_freq_above_min.png",
+  create.dir = TRUE
+)
+@
+
+\newpage
+\section*{Mutational bias across different codons}
+
+<<fig.width=8, fig.height=6>>==
+codon_data <- minor_variants_data_freq %>%
+  filter(
+    minor_percentage > minimum_frequency,
+    isnv_freq != "(0.00, 0.005]",
+    VariantType == "SNP",
+    majorCodon != "NA"
+  )
+
+codon_data %>%
+  ggplot(., aes(x=majorCodon, fill=isnv_freq)) + geom_bar() + facet_wrap(~mutation, scale="free_x") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle=90, hjust=1, vjust=0.5)
+  )+
+  labs(x = "Consensus codon", fill="iSNV Frequency")
+
+ggsave(
+  filename = "figs/mutational_bias.png",
+  create.dir = TRUE
+)
+@
+
+\newpage
+\section*{Potential signatures of selection}
+
+<<fig.width=7, fig.height=4>>==
+shared_threshold = 7
+
+c_data <- minor_variants_data %>%
+  filter(
+    VariantType == "SNP"
+  ) %>%
+  group_by(CHROM, POS, mutation, IsSynonymous, consensus, variant, majorAminoAcid, minorAminoAcid, CodonPosition) %>%
+  summarise(
+    n=n()
+  ) %>%
+  arrange(., desc(n)) %>%
+  ungroup(.) %>%
+  filter(n>1) %>%
+  mutate(
+    label_mut=paste0(consensus, POS, variant, sep="")
+  )
+
+c_data %>%
+  ggplot(., aes(x=POS, y=n, color=IsSynonymous)) +
+  geom_point() +
+  geom_text_repel(
+    data = \(df) filter(df, n > shared_threshold),
+    aes(label = label_mut),
+    show.legend = FALSE
+  ) +
+  theme_bw() +
+  expand_limits(y=0) +
+  facet_wrap(~CHROM) +
+  labs(x="Genomic position", y="Shared", title="iSNV shared across how many samples")
+
+ggsave(
+  filename = "figs/shared_isnv_count.png",
+  create.dir = TRUE
+)
+@
+
+\section*{Frequency of shared non-synonymous iSNVs}
+
+<<fig.width=8, fig.height=4>>==
+shared_isnvs <- c_data %>%
+  mutate(
+    chrom_mut=paste0(CHROM,label_mut)
+  ) %>%
+  filter(
+    n>shared_threshold
+  ) %>%
+  select(chrom_mut)
+
+temp <- minor_variants_data %>%
+  mutate(
+    label_mut=paste0(consensus, POS, variant, sep="")
+  ) %>%
+  mutate(
+    chrom_mut = paste0(CHROM, label_mut)
+  ) %>%
+  filter(chrom_mut %in% shared_isnvs$chrom_mut)
+
+temp %>%
+  ggplot(., aes(x=label_mut, y=minor_percentage, fill=IsSynonymous)) +
+  geom_boxplot() +
+  facet_wrap(~CHROM, scale="free") +
+  expand_limits(y=0) +
+theme( axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  labs(x="iSNV", y="Percentage",
+       title=paste0("Frequency of iSNV shared across samples (n>", shared_threshold, ")"))
+
+ggsave(
+  filename = "figs/shared_isnv_count_freq.png",
+  create.dir = TRUE
+)
+
+temp %>%
+  filter(IsSynonymous =="Non-Synonymous") %>%
+  mutate(
+    label_aa_mut = paste0(majorAminoAcid, CodonPosition, minorAminoAcid)
+  ) %>%
+    ggplot(., aes(x=label_aa_mut, y=minor_percentage)) +
+  geom_boxplot() +
+  facet_wrap(~CHROM, scale="free") +
+theme( axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  labs(x="Amino acid change", y="Percentage",
+       title=paste0("Frequency of Non-Synonymous iSNV shared across samples (n>", shared_threshold, ")"))
+
+ggsave(
+  filename = "figs/shared_isnv_count_freq_nonsyn.png",
+  create.dir = TRUE
+)
+@
+
+<<fig.width=8, fig.height=5>>==
+shared_isnvs <- c_data %>%
+  mutate(
+    chrom_mut=paste0(CHROM,label_mut)
+  ) %>%
+  filter(
+    n<=shared_threshold,
+    n>1
+  ) %>%
+  select(chrom_mut)
+
+temp <- minor_variants_data %>%
+  mutate(
+    label_mut=paste0(consensus, POS, variant, sep="")
+  ) %>%
+  mutate(
+    chrom_mut = paste0(CHROM, label_mut)
+  ) %>%
+  filter(chrom_mut %in% shared_isnvs$chrom_mut)
+
+# temp %>%
+#   ggplot(., aes(x=label_mut, y=minor_percentage, fill=IsSynonymous)) +
+#   geom_boxplot() +
+#   facet_wrap(~CHROM, scale="free") +
+#   expand_limits(y=0) +
+# theme( axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+#   labs(x="iSNV", y="Percentage",
+#        title=paste0("Frequency of iSNV shared across samples (n>", shared_threshold, ")"))
+#
+# ggsave(
+#   filename = "figs/shared_isnv_count_freq.png",
+#   create.dir = TRUE
+# )
+
+temp %>%
+  filter(IsSynonymous =="Non-Synonymous") %>%
+  mutate(
+    label_aa_mut = paste0(majorAminoAcid, CodonPosition, minorAminoAcid)
+  ) %>%
+    ggplot(., aes(x=label_aa_mut, y=minor_percentage)) +
+  geom_boxplot() +
+  facet_wrap(~CHROM, scale="free") +
+theme( axis.text.x = element_text(angle = 90, hjust=1, vjust=0.5)) +
+  labs(x="Amino acid change", y="Percentage",
+       title=paste0("Frequency of Non-Synonymous iSNV shared across samples (1 < n < ", shared_threshold, ")"))
+
+# ggsave(
+#   filename = "figs/shared_isnv_count_freq_nonsyn.png",
+#   create.dir = TRUE
+# )
+@
+
+\newpage
+
+<<>>=
+c_data %>%
+  filter(IsSynonymous == "Non-Synonymous") %>%
+  select(CHROM, label_mut, majorAminoAcid, minorAminoAcid, CodonPosition, n) %>%
+  kable(., longtable=TRUE)
+@
+
+\end{document}
