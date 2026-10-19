@@ -1,0 +1,17 @@
+%%metro title: j23414/vcf-plots
+%%metro style: dark
+%%metro line_order: span
+%%metro line: main | iSNVs | #2db572
+
+graph LR
+    subgraph pipeline [Checkpoint]
+        preprocess([Preprocess data])
+        static([Static ggplot2 plots])
+        interactive([Interactive shiny app])
+        report([Sweave latex reports])
+        
+
+        preprocess -->|main| static
+        preprocess -->|main| interactive
+        preprocess -->|main| report
+    end
