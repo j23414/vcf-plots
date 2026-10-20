@@ -100,7 +100,7 @@ plot_variants_and_depth <- function(samplename, depth_total, depth_filtered, sam
                color = "red") +
     scale_y_log10() +
     labs(
-      title = paste("Depth Plot for Sample:", sample),
+      title = paste("Depth Plot for Sample:", samplename),
       x = "Position",
       y = "Depth",
       color = "Mutation type"
